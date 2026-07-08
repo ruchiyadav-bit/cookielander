@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import api from "../../utils/api";
 import Stepper from "../../components/Stepper";
 import DevicePreviewFrame from "../../components/DevicePreviewFrame";
-import { COOKIE_TEMPLATES, generateAIDesign, applyAdvancedStyles, generateDesktopLPPage } from "../../utils/templates";
+import { COOKIE_TEMPLATES, generateAIDesign, applyAdvancedStyles, applyScrollableCookieBackground, applyCookiePreviewScrollDemo, generateDesktopLPPage } from "../../utils/templates";
 import { downloadAsZip } from "../../utils/zipHelper";
 
 const STEPS = ["Domain", "Design", "Edit Content", "Preview & Save"];
@@ -54,7 +54,10 @@ const empty = {
   subFontSize: "", subFontWeight: "", subFormat: "normal",
   buttonColor: "", buttonTextColor: "", btnFontSize: "", btnFontWeight: "", btnFormat: "normal",
   buttonWidth: "", buttonPaddingX: "", buttonPaddingY: "",
-  contentAlign: "", buttonLayout: ""
+  contentAlign: "", buttonLayout: "",
+  scrollBgEnabled: false, scrollBgType: "color", scrollBgColor: "#f8fafc",
+  scrollBgDesktopImages: ["", "", ""], scrollBgPhoneImages: ["", "", ""], scrollBgImages: ["", "", ""],
+  scrollBgBlur: 0, scrollBgOpacity: 0.25
 };
 const emptyContent = {
   headline: DEFAULT_HEADLINE, bodyCopy: DEFAULT_BODY, ctaText: "", imagePrompt: "",
@@ -104,7 +107,7 @@ export default function CookiePage() {
       html = tmpl ? tmpl.generate({ ...form, ...content }) : "";
     }
     if (!html) return "";
-    return applyAdvancedStyles(html, {
+    html = applyAdvancedStyles(html, {
       enabled: form.advancedEnabled,
       headingColor: form.headingColor, subColor: form.subColor, boxColor: form.boxColor,
       fontSize: form.fontSize, fontWeight: form.fontWeight, format: form.format,
@@ -113,6 +116,27 @@ export default function CookiePage() {
       btnFontSize: form.btnFontSize, btnFontWeight: form.btnFontWeight, btnFormat: form.btnFormat,
       buttonWidth: form.buttonWidth, buttonPaddingX: form.buttonPaddingX, buttonPaddingY: form.buttonPaddingY,
       contentAlign: form.contentAlign, buttonLayout: form.buttonLayout
+    });
+
+    return applyScrollableCookieBackground(html, {
+
+      enabled: form.scrollBgEnabled,
+
+      type: form.scrollBgType,
+
+      color: form.scrollBgColor,
+
+      desktopImages: form.scrollBgDesktopImages,
+
+      phoneImages: form.scrollBgPhoneImages,
+
+
+      images: form.scrollBgImages,
+
+      blur: form.scrollBgBlur,
+
+      opacity: form.scrollBgOpacity
+
     });
   }, [mode, template, aiDesign, content, form]);
 
@@ -124,10 +148,12 @@ export default function CookiePage() {
     lpActive ? generateDesktopLPPage({ blog: lpBlog, consentHtml, domain: lpDomain || form.domain }) : consentHtml,
     [lpActive, lpBlog, consentHtml, lpDomain, form.domain]);
 
+  const previewConsentHtml = useMemo(() => applyCookiePreviewScrollDemo(consentHtml), [consentHtml]);
+
   // What the in-app preview shows — forced by the desktop/phone toggle.
   const previewHtml = useMemo(() =>
-    lpActive ? generateDesktopLPPage({ blog: lpBlog, consentHtml, domain: lpDomain || form.domain, mode: previewMode }) : consentHtml,
-    [lpActive, lpBlog, consentHtml, lpDomain, form.domain, previewMode]);
+    lpActive ? generateDesktopLPPage({ blog: lpBlog, consentHtml: previewConsentHtml, domain: lpDomain || form.domain, mode: previewMode }) : previewConsentHtml,
+    [lpActive, lpBlog, previewConsentHtml, lpDomain, form.domain, previewMode]);
 
   const generateLanding = async () => {
     const domain = (lpDomain || form.domain).trim();
@@ -162,6 +188,20 @@ export default function CookiePage() {
     if (!file || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = () => setReferenceImage(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleScrollBgImage = (file, index, target = "phone") => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm(f => {
+        const key = target === "desktop" ? "scrollBgDesktopImages" : "scrollBgPhoneImages";
+        const images = [...(f[key] || ["", "", ""] )];
+        images[index] = reader.result;
+        return { ...f, [key]: images, scrollBgType: "image" };
+      });
+    };
     reader.readAsDataURL(file);
   };
 
@@ -575,6 +615,102 @@ export default function CookiePage() {
                         </div>
                       )}
                     </div>
+
+                    {/* BG Scroll: fake website background behind the fixed cookie popup */}
+                    <div className="border border-slate-100 rounded-lg p-3 bg-white">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={!!form.scrollBgEnabled}
+                          onChange={e => setForm({ ...form, scrollBgEnabled: e.target.checked })}
+                          className="w-4 h-4 accent-emerald-500" />
+                        <span className="text-xs font-semibold text-slate-700">
+                          <i className="fa-solid fa-scroll mr-1.5 text-emerald-500" />BG Scroll
+                        </span>
+                      </label>
+
+                      {form.scrollBgEnabled && (
+                        <div className="mt-3 space-y-3">
+                          <div className="flex gap-2">
+                            <button type="button"
+                              className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${form.scrollBgType === "color" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                              onClick={() => setForm({ ...form, scrollBgType: "color" })}>
+                              <i className="fa-solid fa-fill-drip mr-1" />Color
+                            </button>
+                            <button type="button"
+                              className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${form.scrollBgType === "image" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                              onClick={() => setForm({ ...form, scrollBgType: "image" })}>
+                              <i className="fa-solid fa-image mr-1" />Image
+                            </button>
+                          </div>
+
+                          {form.scrollBgType === "color" ? (
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form.scrollBgColor) ? form.scrollBgColor : "#f8fafc"}
+                                onChange={e => setForm({ ...form, scrollBgColor: e.target.value })}
+                                className="w-10 h-9 rounded border border-slate-200 cursor-pointer" />
+                              <input className="input text-sm flex-1" placeholder="#f8fafc" value={form.scrollBgColor || ""}
+                                onChange={e => setForm({ ...form, scrollBgColor: e.target.value })} />
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {(!desktopLP ? [
+                                { key: "desktop", label: "Desktop BG Images", images: form.scrollBgDesktopImages || ["", "", ""] },
+                                { key: "phone", label: "Phone BG Images", images: form.scrollBgPhoneImages || ["", "", ""] }
+                              ] : [
+                                { key: "phone", label: "Phone BG Images", images: form.scrollBgPhoneImages || ["", "", ""] }
+                              ]).map(group => (
+                                <div key={group.key}>
+                                  <p className="text-xs font-medium text-slate-600 mb-1.5">{group.label}</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    {[0, 1, 2].map(i => (
+                                      <div key={i} className="border border-slate-200 rounded-lg p-2 bg-slate-50">
+                                        {group.images?.[i] ? (
+                                          <div className="relative">
+                                            <img src={group.images[i]} alt={`${group.label} ${i + 1}`} className="w-full h-20 object-cover rounded-md" />
+                                            <button type="button"
+                                              onClick={() => {
+                                                const key = group.key === "desktop" ? "scrollBgDesktopImages" : "scrollBgPhoneImages";
+                                                const images = [...(form[key] || ["", "", ""])];
+                                                images[i] = "";
+                                                setForm({ ...form, [key]: images });
+                                              }}
+                                              className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-800 text-white text-xs flex items-center justify-center hover:bg-slate-900">
+                                              x
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <label className="h-20 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30">
+                                            <i className="fa-solid fa-upload text-slate-400" />
+                                            <span className="text-[11px] text-slate-500">Image {i + 1}</span>
+                                            <input type="file" accept="image/*" className="hidden"
+                                              onChange={e => { handleScrollBgImage(e.target.files?.[0], i, group.key); e.target.value = ""; }} />
+                                          </label>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Blury: {form.scrollBgBlur || 0}px</label>
+                              <input type="range" min="0" max="18" step="1" value={form.scrollBgBlur || 0}
+                                onChange={e => setForm({ ...form, scrollBgBlur: parseInt(e.target.value, 10) || 0 })}
+                                className="w-full" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Opacity: {form.scrollBgOpacity ?? 0.25}</label>
+                              <input type="range" min="0" max="0.8" step="0.05" value={form.scrollBgOpacity ?? 0.25}
+                                onChange={e => setForm({ ...form, scrollBgOpacity: parseFloat(e.target.value) })}
+                                className="w-full" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
 
                     {/* Color fields */}
                     <div className="grid grid-cols-2 gap-3">

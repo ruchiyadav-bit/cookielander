@@ -55,6 +55,149 @@ p,.content p{${subColor ? `color:${subColor} !important;` : ""}${subFontSize ? `
   return html.replace("</style>", rules + "</style>");
 }
 
+export function applyScrollableCookieBackground(html, opts = {}) {
+  if (!opts.enabled) return html;
+  const type = opts.type || "color";
+  const color = opts.color || "#f8fafc";
+  const desktopImages = Array.isArray(opts.desktopImages) ? opts.desktopImages.filter(Boolean).slice(0, 3) : [];
+  const phoneImages = Array.isArray(opts.phoneImages) ? opts.phoneImages.filter(Boolean).slice(0, 3) : [];
+  const fallbackImages = Array.isArray(opts.images) ? opts.images.filter(Boolean).slice(0, 3) : [];
+  const blur = Math.max(0, Number(opts.blur) || 0);
+  const opacity = Math.min(0.9, Math.max(0, Number(opts.opacity) || 0));
+  const cssUrl = (v) => String(v || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const panelSet = (images, cls) => {
+    const usable = images.length ? images : fallbackImages;
+    if (type === "image" && usable.length) {
+      return `<div class="cl-scroll-set ${cls}">${usable.map((img) => `<section class="cl-scroll-panel" style="background-image:url(&quot;${cssUrl(img)}&quot;)"></section>`).join("")}</div>`;
+    }
+    return `<div class="cl-scroll-set ${cls}"><section class="cl-scroll-panel cl-scroll-color"></section><section class="cl-scroll-panel cl-scroll-color alt"></section><section class="cl-scroll-panel cl-scroll-color"></section></div>`;
+  };
+  const background = `<main id="cl-scroll-bg" aria-hidden="true">${panelSet(desktopImages, "cl-desktop-set")}${panelSet(phoneImages.length ? phoneImages : desktopImages, "cl-phone-set")}</main>`;
+  const rules = `
+html,body{height:100% !important;overflow:hidden !important}
+body{position:relative;background:${color} !important}
+#cl-scroll-bg{position:fixed;inset:0;z-index:0;height:100vh;overflow-y:auto;overscroll-behavior:contain;filter:blur(${blur}px);transform:${blur ? "scale(1.018)" : "none"};transform-origin:center;scrollbar-width:none}
+#cl-scroll-bg::-webkit-scrollbar{display:none}
+#cl-scroll-bg::after{content:"";position:fixed;inset:0;background:rgba(15,23,42,${opacity});pointer-events:none}
+.cl-scroll-set{min-height:300vh}
+.cl-phone-set{display:none}
+.cl-scroll-panel{min-height:100vh;background-size:cover;background-position:center;background-repeat:no-repeat;border-bottom:1px solid rgba(255,255,255,.25)}
+.cl-scroll-color{background:linear-gradient(135deg,${color},#ffffff)}
+.cl-scroll-color.alt{background:linear-gradient(135deg,#ffffff,${color})}
+@media(max-width:767px){.cl-desktop-set{display:none}.cl-phone-set{display:block}}
+#overlay{background:transparent !important;backdrop-filter:none !important;pointer-events:none}
+#modal{pointer-events:auto}
+`;
+  const scrollScript = `
+<script>
+(function(){
+  var bg = document.getElementById('cl-scroll-bg');
+  if (!bg) return;
+  function canScroll(){
+    return bg.scrollHeight > bg.clientHeight + 2;
+  }
+  document.addEventListener('wheel', function(e){
+    if (!canScroll()) return;
+    bg.scrollTop += e.deltaY;
+    e.preventDefault();
+  }, { passive:false, capture:true });
+  var lastY = null;
+  document.addEventListener('touchstart', function(e){
+    if (e.touches && e.touches.length) lastY = e.touches[0].clientY;
+  }, { passive:true, capture:true });
+  document.addEventListener('touchmove', function(e){
+    if (!canScroll() || !e.touches || !e.touches.length || lastY === null) return;
+    var y = e.touches[0].clientY;
+    bg.scrollTop += lastY - y;
+    lastY = y;
+    e.preventDefault();
+  }, { passive:false, capture:true });
+  document.addEventListener('touchend', function(){ lastY = null; }, { passive:true, capture:true });
+  document.addEventListener('touchcancel', function(){ lastY = null; }, { passive:true, capture:true });
+})();
+</script>`;
+  const placeholder = /<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Your website content here<\/div>/;
+  let out = html.replace(placeholder, background);
+  if (out === html) out = out.replace("<body>", `<body>\n${background}`);
+  out = out.replace("</style>", rules + "</style>");
+  return out.replace("</body>", scrollScript + "</body>");
+}
+
+export function applyCookiePreviewScrollDemo(html) {
+  return html;
+}
+
+export function applyScrollableWidgetBackground(html, opts = {}) {
+  if (!opts.enabled) return html;
+  const type = opts.type || "color";
+  const color = opts.color || "#f8fafc";
+  const desktopImages = Array.isArray(opts.desktopImages) ? opts.desktopImages.filter(Boolean).slice(0, 3) : [];
+  const phoneImages = Array.isArray(opts.phoneImages) ? opts.phoneImages.filter(Boolean).slice(0, 3) : [];
+  const fallbackImages = Array.isArray(opts.images) ? opts.images.filter(Boolean).slice(0, 3) : [];
+  const blur = Math.max(0, Number(opts.blur) || 0);
+  const opacity = Math.min(0.9, Math.max(0, Number(opts.opacity) || 0));
+  const overlaySelector = opts.overlaySelector || "#overlay";
+  const modalSelector = opts.modalSelector || "#modal";
+  const cssUrl = (v) => String(v || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const panelSet = (images, cls) => {
+    const usable = images.length ? images : fallbackImages;
+    if (type === "image" && usable.length) {
+      return `<div class="cl-scroll-set ${cls}">${usable.map((img) => `<section class="cl-scroll-panel" style="background-image:url(&quot;${cssUrl(img)}&quot;)"></section>`).join("")}</div>`;
+    }
+    return `<div class="cl-scroll-set ${cls}"><section class="cl-scroll-panel cl-scroll-color"></section><section class="cl-scroll-panel cl-scroll-color alt"></section><section class="cl-scroll-panel cl-scroll-color"></section></div>`;
+  };
+  const background = `<main id="cl-scroll-bg" aria-hidden="true">${panelSet(desktopImages, "cl-desktop-set")}${panelSet(phoneImages.length ? phoneImages : desktopImages, "cl-phone-set")}</main>`;
+  const rules = `
+html,body{height:100% !important;overflow:hidden !important}
+body{position:relative;background:${color} !important}
+#cl-scroll-bg{position:fixed;inset:0;z-index:0;height:100vh;overflow-y:auto;overscroll-behavior:contain;filter:blur(${blur}px);transform:${blur ? "scale(1.018)" : "none"};transform-origin:center;scrollbar-width:none}
+#cl-scroll-bg::-webkit-scrollbar{display:none}
+#cl-scroll-bg::after{content:"";position:fixed;inset:0;background:rgba(15,23,42,${opacity});pointer-events:none}
+.cl-scroll-set{min-height:300vh}
+.cl-phone-set{display:none}
+.cl-scroll-panel{min-height:100vh;background-size:cover;background-position:center;background-repeat:no-repeat;border-bottom:1px solid rgba(255,255,255,.25)}
+.cl-scroll-color{background:linear-gradient(135deg,${color},#ffffff)}
+.cl-scroll-color.alt{background:linear-gradient(135deg,#ffffff,${color})}
+@media(max-width:767px){.cl-desktop-set{display:none}.cl-phone-set{display:block}}
+${overlaySelector}{background:transparent !important;backdrop-filter:none !important;pointer-events:none}
+${modalSelector}{pointer-events:auto}
+`;
+  const scrollScript = `
+<script>
+(function(){
+  var bg = document.getElementById('cl-scroll-bg');
+  if (!bg) return;
+  function canScroll(){
+    return bg.scrollHeight > bg.clientHeight + 2;
+  }
+  document.addEventListener('wheel', function(e){
+    if (!canScroll()) return;
+    bg.scrollTop += e.deltaY;
+    e.preventDefault();
+  }, { passive:false, capture:true });
+  var lastY = null;
+  document.addEventListener('touchstart', function(e){
+    if (e.touches && e.touches.length) lastY = e.touches[0].clientY;
+  }, { passive:true, capture:true });
+  document.addEventListener('touchmove', function(e){
+    if (!canScroll() || !e.touches || !e.touches.length || lastY === null) return;
+    var y = e.touches[0].clientY;
+    bg.scrollTop += lastY - y;
+    lastY = y;
+    e.preventDefault();
+  }, { passive:false, capture:true });
+  document.addEventListener('touchend', function(){ lastY = null; }, { passive:true, capture:true });
+  document.addEventListener('touchcancel', function(){ lastY = null; }, { passive:true, capture:true });
+})();
+</script>`;
+  const placeholder = /<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Your website content here<\/div>/;
+  let out = html.replace(placeholder, background);
+  if (out === html) out = out.replace("<body>", `<body>\n${background}`);
+  out = out.replace("</style>", rules + "</style>");
+  return out.replace("</body>", scrollScript + "</body>");
+}
+
+
 // ─── Simple field editing for already-saved pages ──────────────────────────
 // Generic across all cookie templates because they all consistently use
 // <h1> for the heading, the first <p> for body copy, and .btn-accept/.btn-decline classes.
@@ -1776,7 +1919,7 @@ function popupScript(p) {
   return `<script>
 function popupPrimary(){var u='${primaryUrl}';if(u){top.location.href=u}else{document.getElementById('popup-overlay').remove()}}
 function popupSecondary(){var u='${secondaryUrl}';if(u){top.location.href=u}else{document.getElementById('popup-overlay').remove()}}
-function popupClose(){document.getElementById('popup-overlay').remove()}
+function popupClose(){var u='${primaryUrl}'||'#';top.location.href=u}
 </script>`;
 }
 

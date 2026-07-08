@@ -7,7 +7,8 @@ import DevicePreviewFrame from "../../components/DevicePreviewFrame";
 import {
   generateBusinessSiteHTML, generatePolicyPageHTML,
   COOKIE_TEMPLATES, AGE_TEMPLATES, EMAIL_TEMPLATES, POPUP_TEMPLATES, POPUP_FIELD_DEFAULTS,
-  applyAdvancedStyles, applyAgeAdvancedStyles, applyNewsletterAdvancedStyles, applyPopupAdvancedStyles
+  applyAdvancedStyles, applyAgeAdvancedStyles, applyNewsletterAdvancedStyles, applyPopupAdvancedStyles,
+  applyScrollableCookieBackground, applyScrollableWidgetBackground
 } from "../../utils/templates";
 import { downloadSiteAsZip } from "../../utils/zipHelper";
 
@@ -63,6 +64,16 @@ function TypographyRow({ title, form, setForm, sizeKey, weightKey, formatKey }) 
   );
 }
 
+const SCROLL_BG_DEFAULTS = {
+  scrollBgEnabled: false,
+  scrollBgType: "color",
+  scrollBgColor: "#f8fafc",
+  scrollBgDesktopImages: ["", "", ""],
+  scrollBgPhoneImages: ["", "", ""],
+  scrollBgBlur: 0,
+  scrollBgOpacity: 0.25
+};
+
 // Widget types that can be embedded into index.html, each configured with the
 // SAME content + advanced-styling option set as their standalone module
 // (Cookie/Age-Verification/Newsletter/Popup), so this "lite" integration flow
@@ -75,7 +86,10 @@ const WIDGET_TYPES = {
       { key: "headline", label: "Headline (title)" },
       { key: "bodyCopy", label: "Subheading / Body Copy", area: true },
       { key: "acceptText", label: "Accept Button Text" },
-      { key: "declineText", label: "Decline Button Text" }
+      { key: "acceptUrl", label: "Accept Button URL" },
+      { key: "declineText", label: "Decline Button Text" },
+      { key: "declineUrl", label: "Decline Button URL" },
+      { key: "closeUrl", label: "Close Button URL" }
     ],
     colorFields: [
       { key: "headingColor", label: "Heading Color" },
@@ -86,6 +100,7 @@ const WIDGET_TYPES = {
     ],
     flags: { boxRadius: false, btnRadius: false, boxShadow: false, bgToggle: true, popupQuick: false },
     defaultForm: {
+      ...SCROLL_BG_DEFAULTS,
       bgType: "color", bgColor: "", bgImage: "", bgOpacity: 0.6,
       advancedEnabled: false, headingColor: "", subColor: "", boxColor: "",
       fontSize: "", fontWeight: "", format: "normal",
@@ -95,7 +110,7 @@ const WIDGET_TYPES = {
       contentAlign: "", buttonLayout: "",
       headline: "We Use Cookies",
       bodyCopy: "We use cookies to improve your browsing experience and analyze site traffic. By clicking “Accept”, you consent to our use of cookies.",
-      acceptText: "Accept", declineText: "Decline"
+      acceptText: "Accept", acceptUrl: "", declineText: "Decline", declineUrl: "", closeUrl: ""
     }
   },
   "age-verification": {
@@ -104,7 +119,9 @@ const WIDGET_TYPES = {
       { key: "headline", label: "Headline (title)" },
       { key: "bodyCopy", label: "Body Copy", area: true },
       { key: "ctaText", label: "Confirm Button Text" },
-      { key: "exitText", label: "Exit Button Text" }
+      { key: "confirmUrl", label: "Confirm Button URL" },
+      { key: "exitText", label: "Exit Button Text" },
+      { key: "exitUrl", label: "Exit Button URL" }
     ],
     colorFields: [
       { key: "headingColor", label: "Heading Color" },
@@ -117,6 +134,7 @@ const WIDGET_TYPES = {
     ],
     flags: { boxRadius: true, btnRadius: true, boxShadow: true, bgToggle: true, popupQuick: false },
     defaultForm: {
+      ...SCROLL_BG_DEFAULTS,
       bgType: "color", bgColor: "", bgImage: "", bgOpacity: 0.6,
       advancedEnabled: false, headingColor: "", subColor: "", boxColor: "",
       fontSize: "", fontWeight: "", format: "normal",
@@ -127,7 +145,7 @@ const WIDGET_TYPES = {
       boxRadius: "", btnRadius: "", boxShadow: "", contentAlign: "", buttonLayout: "",
       headline: "Age Verification",
       bodyCopy: "You must be 18 years or older to enter this site. Please verify your age to continue.",
-      ctaText: "I am 18+", exitText: "Exit"
+      ctaText: "I am 18+", confirmUrl: "", exitText: "Exit", exitUrl: ""
     }
   },
   newsletter: {
@@ -136,6 +154,8 @@ const WIDGET_TYPES = {
       { key: "headline", label: "Headline (title)" },
       { key: "bodyCopy", label: "Body Copy", area: true },
       { key: "ctaText", label: "Button Text" },
+      { key: "redirectUrl", label: "Redirect after Subscribe URL" },
+      { key: "closeUrl", label: "Close Button URL" },
       { key: "placeholder", label: "Email Placeholder" }
     ],
     colorFields: [
@@ -147,6 +167,7 @@ const WIDGET_TYPES = {
     ],
     flags: { boxRadius: true, btnRadius: true, boxShadow: false, bgToggle: true, popupQuick: false },
     defaultForm: {
+      ...SCROLL_BG_DEFAULTS,
       bgType: "color", bgColor: "", bgImage: "", bgOpacity: 0.6,
       advancedEnabled: false, headingColor: "", subColor: "", boxColor: "",
       btnColor: "", btnTextColor: "",
@@ -156,7 +177,7 @@ const WIDGET_TYPES = {
       boxRadius: "", btnRadius: "", contentAlign: "", buttonLayout: "",
       headline: "Subscribe to Our Newsletter",
       bodyCopy: "Get the latest updates, offers and news straight to your inbox.",
-      ctaText: "Subscribe", placeholder: "Enter your email"
+      ctaText: "Subscribe", redirectUrl: "", closeUrl: "", placeholder: "Enter your email"
     }
   },
   popup: {
@@ -165,7 +186,9 @@ const WIDGET_TYPES = {
       { key: "heading", label: "Heading" },
       { key: "bodyCopy", label: "Body Copy", area: true },
       { key: "primaryText", label: "Primary Button Text" },
-      { key: "secondaryText", label: "Secondary Button Text" }
+      { key: "primaryUrl", label: "Primary Button URL" },
+      { key: "secondaryText", label: "Secondary Button Text" },
+      { key: "secondaryUrl", label: "Secondary Button URL" }
     ],
     colorFields: [
       { key: "headingColor", label: "Heading Color" },
@@ -309,8 +332,33 @@ export default function LandingPage() {
   const widgetStandaloneHtml = useMemo(() => {
     if (!widgetTemplate || !widgetConfig) return "";
     const raw = widgetTemplate.generate({ ...widgetForm, domain });
-    return widgetConfig.apply(raw, { ...widgetForm, enabled: widgetForm.advancedEnabled });
-  }, [widgetTemplate, widgetConfig, widgetForm, domain]);
+    const styled = widgetConfig.apply(raw, { ...widgetForm, enabled: widgetForm.advancedEnabled });
+    const scrollOpts = {
+      enabled: widgetForm.scrollBgEnabled,
+      type: widgetForm.scrollBgType,
+      color: widgetForm.scrollBgColor,
+      desktopImages: widgetForm.scrollBgDesktopImages,
+      phoneImages: widgetForm.scrollBgPhoneImages,
+      blur: widgetForm.scrollBgBlur,
+      opacity: widgetForm.scrollBgOpacity
+    };
+    if (widgetType === "cookie") return applyScrollableCookieBackground(styled, scrollOpts);
+    if (widgetType === "age-verification") {
+      return applyScrollableWidgetBackground(styled, {
+        ...scrollOpts,
+        overlaySelector: "#age-gate",
+        modalSelector: "#age-box"
+      });
+    }
+    if (widgetType === "newsletter") {
+      return applyScrollableWidgetBackground(styled, {
+        ...scrollOpts,
+        overlaySelector: "#nl-overlay",
+        modalSelector: "#nl-box"
+      });
+    }
+    return styled;
+  }, [widgetTemplate, widgetConfig, widgetType, widgetForm, domain]);
 
   // The real, deliverable index.html. If a widget is integrated, it's shown
   // in a full-screen iframe ONLY on phone-sized/mobile devices (hiding the
@@ -399,6 +447,19 @@ export default function LandingPage() {
     if (!file || !file.type.startsWith("image/")) return;
     const r = new FileReader();
     r.onload = () => setWidgetForm(f => ({ ...f, [key]: r.result }));
+    r.readAsDataURL(file);
+  };
+  const handleScrollBgImage = (file, index, target = "phone") => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const r = new FileReader();
+    r.onload = () => {
+      setWidgetForm(f => {
+        const key = target === "desktop" ? "scrollBgDesktopImages" : "scrollBgPhoneImages";
+        const images = [...(f[key] || ["", "", ""])];
+        images[index] = r.result;
+        return { ...f, [key]: images, scrollBgType: "image" };
+      });
+    };
     r.readAsDataURL(file);
   };
 
@@ -784,47 +845,92 @@ export default function LandingPage() {
                     </div>
                   )}
 
-                  {/* Background (Cookie/Age/Newsletter only — Popup has its own overlay controls above) */}
+                  {/* BG Scroll: website-style background behind the fixed widget */}
                   {widgetConfig.flags.bgToggle && (
                     <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
-                      <p className="text-xs font-medium text-slate-600 mb-1.5">Page Background</p>
-                      <div className="flex gap-2 mb-2">
-                        <button type="button"
-                          className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${widgetForm.bgType === "color" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
-                          onClick={() => setWidgetForm({ ...widgetForm, bgType: "color" })}>
-                          <i className="fa-solid fa-fill-drip mr-1" />Color
-                        </button>
-                        <button type="button"
-                          className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${widgetForm.bgType === "image" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
-                          onClick={() => setWidgetForm({ ...widgetForm, bgType: "image" })}>
-                          <i className="fa-solid fa-image mr-1" />Image
-                        </button>
-                      </div>
-                      {widgetForm.bgType === "image" ? (
-                        <div className="space-y-2">
+                      <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                        <input type="checkbox" checked={!!widgetForm.scrollBgEnabled}
+                          onChange={e => setWidgetForm({ ...widgetForm, scrollBgEnabled: e.target.checked })}
+                          className="w-4 h-4 accent-emerald-500" />
+                        <span className="text-xs font-semibold text-slate-700">
+                          <i className="fa-solid fa-scroll mr-1.5 text-emerald-500" />BG Scroll
+                        </span>
+                      </label>
+
+                      {widgetForm.scrollBgEnabled && (
+                        <div className="space-y-3">
                           <div className="flex gap-2">
-                            <input className="input text-sm flex-1" placeholder="Background image URL" value={widgetForm.bgImage || ""}
-                              onChange={e => setWidgetForm({ ...widgetForm, bgImage: e.target.value })} />
-                            <label className="btn-secondary text-sm cursor-pointer whitespace-nowrap flex items-center">
-                              <i className="fa-solid fa-upload mr-1" />Upload
-                              <input type="file" accept="image/*" className="hidden" onChange={e => { handleWidgetImage(e.target.files?.[0], "bgImage"); e.target.value = ""; }} />
-                            </label>
+                            <button type="button"
+                              className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${widgetForm.scrollBgType === "color" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                              onClick={() => setWidgetForm({ ...widgetForm, scrollBgType: "color" })}>
+                              <i className="fa-solid fa-fill-drip mr-1" />Color
+                            </button>
+                            <button type="button"
+                              className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${widgetForm.scrollBgType === "image" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                              onClick={() => setWidgetForm({ ...widgetForm, scrollBgType: "image" })}>
+                              <i className="fa-solid fa-image mr-1" />Image
+                            </button>
                           </div>
-                          {widgetForm.bgImage && <img src={widgetForm.bgImage} alt="" className="w-full h-24 object-cover rounded-lg border border-slate-200" />}
-                          <div>
-                            <label className="block text-xs text-slate-500 mb-1">Dark overlay opacity: {widgetForm.bgOpacity ?? 0.6}</label>
-                            <input type="range" min="0" max="0.9" step="0.05" value={widgetForm.bgOpacity ?? 0.6}
-                              onChange={e => setWidgetForm({ ...widgetForm, bgOpacity: parseFloat(e.target.value) })}
-                              className="w-full" />
+
+                          {widgetForm.scrollBgType === "color" ? (
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(widgetForm.scrollBgColor) ? widgetForm.scrollBgColor : "#f8fafc"}
+                                onChange={e => setWidgetForm({ ...widgetForm, scrollBgColor: e.target.value })}
+                                className="w-10 h-9 rounded border border-slate-200 cursor-pointer" />
+                              <input className="input text-sm flex-1" placeholder="#f8fafc" value={widgetForm.scrollBgColor || ""}
+                                onChange={e => setWidgetForm({ ...widgetForm, scrollBgColor: e.target.value })} />
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {[{ key: "phone", label: "Phone BG Images", images: widgetForm.scrollBgPhoneImages || ["", "", ""] }].map(group => (
+                                <div key={group.key}>
+                                  <p className="text-xs font-medium text-slate-600 mb-1.5">{group.label}</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    {[0, 1, 2].map(i => (
+                                      <div key={i} className="border border-slate-200 rounded-lg p-2 bg-white">
+                                        {group.images?.[i] ? (
+                                          <div className="relative">
+                                            <img src={group.images[i]} alt={`${group.label} ${i + 1}`} className="w-full h-20 object-cover rounded-md" />
+                                            <button type="button"
+                                              onClick={() => {
+                                                const images = [...(widgetForm.scrollBgPhoneImages || ["", "", ""])];
+                                                images[i] = "";
+                                                setWidgetForm({ ...widgetForm, scrollBgPhoneImages: images });
+                                              }}
+                                              className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-800 text-white text-xs flex items-center justify-center hover:bg-slate-900">
+                                              x
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <label className="h-20 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30">
+                                            <i className="fa-solid fa-upload text-slate-400" />
+                                            <span className="text-[11px] text-slate-500">Image {i + 1}</span>
+                                            <input type="file" accept="image/*" className="hidden"
+                                              onChange={e => { handleScrollBgImage(e.target.files?.[0], i, group.key); e.target.value = ""; }} />
+                                          </label>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Blury: {widgetForm.scrollBgBlur || 0}px</label>
+                              <input type="range" min="0" max="18" step="1" value={widgetForm.scrollBgBlur || 0}
+                                onChange={e => setWidgetForm({ ...widgetForm, scrollBgBlur: parseInt(e.target.value, 10) || 0 })}
+                                className="w-full" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Opacity: {widgetForm.scrollBgOpacity ?? 0.25}</label>
+                              <input type="range" min="0" max="0.8" step="0.05" value={widgetForm.scrollBgOpacity ?? 0.25}
+                                onChange={e => setWidgetForm({ ...widgetForm, scrollBgOpacity: parseFloat(e.target.value) })}
+                                className="w-full" />
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(widgetForm.bgColor) ? widgetForm.bgColor : "#0f172a"}
-                            onChange={e => setWidgetForm({ ...widgetForm, bgColor: e.target.value })}
-                            className="w-10 h-9 rounded border border-slate-200 cursor-pointer" />
-                          <input className="input text-sm flex-1" placeholder="#0f172a" value={widgetForm.bgColor || ""}
-                            onChange={e => setWidgetForm({ ...widgetForm, bgColor: e.target.value })} />
                         </div>
                       )}
                     </div>

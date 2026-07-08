@@ -2,12 +2,22 @@ import React, { useState, useMemo, useEffect } from "react";
 import api from "../../utils/api";
 import Stepper from "../../components/Stepper";
 import DevicePreviewFrame from "../../components/DevicePreviewFrame";
-import { POPUP_TEMPLATES, POPUP_FIELD_DEFAULTS, applyPopupAdvancedStyles } from "../../utils/templates";
+import { POPUP_TEMPLATES, POPUP_FIELD_DEFAULTS, applyPopupAdvancedStyles, applyScrollableWidgetBackground, generateDesktopLPPage } from "../../utils/templates";
 import { downloadAsZip } from "../../utils/zipHelper";
 
 // No "generate" step — the README is explicit that the popup module skips
 // AI generation entirely: Domain -> Choose a design -> Live editor -> Preview & Save.
 const STEPS = ["Domain", "Choose a Design", "Live Editor", "Preview & Save"];
+
+const POPUP_SCROLL_BG_DEFAULTS = {
+  scrollBgEnabled: false,
+  scrollBgType: "color",
+  scrollBgColor: "#f8fafc",
+  scrollBgDesktopImages: ["", "", ""],
+  scrollBgPhoneImages: ["", "", ""],
+  scrollBgBlur: 0,
+  scrollBgOpacity: 0.25
+};
 
 function TypographyRow({ title, form, setForm, sizeKey, weightKey, formatKey }) {
   return (
@@ -49,17 +59,27 @@ export default function PopupModule() {
   const [step, setStep]         = useState(0);
   const [domain, setDomain]     = useState("");
   const [templateId, setTemplateId] = useState(null);
-  const [form, setForm]         = useState(POPUP_FIELD_DEFAULTS);
+  const [form, setForm]         = useState({ ...POPUP_FIELD_DEFAULTS, ...POPUP_SCROLL_BG_DEFAULTS });
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState("");
 
+  // "Create LP for Desktop" feature
+  const [desktopLP, setDesktopLP] = useState(false);
+  const [blogLP, setBlogLP]       = useState(null);
+  const [lpDomain, setLpDomain]   = useState("");
+  const [lpIndustry, setLpIndustry] = useState("");
+  const [lpLoading, setLpLoading] = useState(false);
+  const [lpError, setLpError]     = useState("");
+  const [lpImage, setLpImage]     = useState("");
+  const [previewMode, setPreviewMode] = useState("desktop");
+
   const template = POPUP_TEMPLATES.find(t => t.id === templateId);
 
-  const outputHtml = useMemo(() => {
+  const popupHtml = useMemo(() => {
     if (!template) return "";
     const html = template.generate({ ...form, domain });
-    return applyPopupAdvancedStyles(html, {
+    const styled = applyPopupAdvancedStyles(html, {
       enabled: form.advancedEnabled,
       headingColor: form.headingColor, subColor: form.subColor,
       fontSize: form.fontSize, fontWeight: form.fontWeight, format: form.format,
@@ -69,7 +89,48 @@ export default function PopupModule() {
       btnRadius: form.btnRadius, boxShadow: form.boxShadow,
       contentAlign: form.contentAlign, buttonLayout: form.buttonLayout
     });
+    return applyScrollableWidgetBackground(styled, {
+      enabled: form.scrollBgEnabled,
+      type: form.scrollBgType,
+      color: form.scrollBgColor,
+      desktopImages: form.scrollBgDesktopImages,
+      phoneImages: form.scrollBgPhoneImages,
+      blur: form.scrollBgBlur,
+      opacity: form.scrollBgOpacity,
+      overlaySelector: "#popup-overlay",
+      modalSelector: "#popup-modal"
+    });
   }, [template, form, domain]);
+
+  const lpActive = desktopLP && !!blogLP;
+  const lpBlog = lpImage && blogLP ? { ...blogLP, imageUrl: lpImage } : blogLP;
+
+  const outputHtml = useMemo(() =>
+    lpActive ? generateDesktopLPPage({ blog: lpBlog, consentHtml: popupHtml, domain: lpDomain || domain }) : popupHtml,
+    [lpActive, lpBlog, popupHtml, lpDomain, domain]);
+
+  const previewHtml = useMemo(() =>
+    lpActive ? generateDesktopLPPage({ blog: lpBlog, consentHtml: popupHtml, domain: lpDomain || domain, mode: previewMode }) : popupHtml,
+    [lpActive, lpBlog, popupHtml, lpDomain, domain, previewMode]);
+
+  const handleLpImage = (file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const r = new FileReader();
+    r.onload = () => setLpImage(r.result);
+    r.readAsDataURL(file);
+  };
+
+  const generateLanding = async () => {
+    const targetDomain = (lpDomain || domain).trim();
+    if (!targetDomain) return;
+    setLpError(""); setLpLoading(true);
+    try {
+      const { data } = await api.post("/api/generate/landing", { domain: targetDomain, industry: lpIndustry.trim() });
+      setBlogLP(data);
+    } catch (err) {
+      setLpError(err.response?.data?.message || "Landing page generation failed");
+    } finally { setLpLoading(false); }
+  };
 
   const handleImageUpload = (file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -78,10 +139,24 @@ export default function PopupModule() {
     reader.readAsDataURL(file);
   };
 
+  const handleScrollBgImage = (file, index, target = "phone") => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm(f => {
+        const key = target === "desktop" ? "scrollBgDesktopImages" : "scrollBgPhoneImages";
+        const images = [...(f[key] || ["", "", ""])];
+        images[index] = reader.result;
+        return { ...f, [key]: images, scrollBgType: "image" };
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const chooseTemplate = (id) => {
     const t = POPUP_TEMPLATES.find(t => t.id === id);
     setTemplateId(id);
-    setForm({ ...POPUP_FIELD_DEFAULTS, ...(t?.defaults || {}) });
+    setForm({ ...POPUP_FIELD_DEFAULTS, ...(t?.defaults || {}), ...POPUP_SCROLL_BG_DEFAULTS });
   };
 
   const save = async () => {
@@ -127,7 +202,78 @@ export default function PopupModule() {
                   onChange={e => setDomain(e.target.value)} />
                 <p className="text-xs text-slate-400 mt-1">Used to save and identify this project.</p>
               </div>
-              <button className="btn-primary px-6 font-semibold text-white" disabled={!domain.trim()} onClick={() => setStep(1)}>
+
+              {/* Create LP for Desktop */}
+              <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={desktopLP}
+                    onChange={e => { setDesktopLP(e.target.checked); setLpError(""); }}
+                    className="w-4 h-4 accent-emerald-500" />
+                  <span className="text-xs font-semibold text-slate-700">
+                    <i className="fa-solid fa-desktop mr-1.5 text-emerald-500" />Create LP for Desktop
+                  </span>
+                </label>
+                {desktopLP && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-500 mb-3">
+                      Desktop visitors see an AI-generated blog landing page; the popup only shows on mobile.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Domain *</label>
+                        <input className="input text-sm" placeholder="e.g. acme.com" value={lpDomain}
+                          onChange={e => setLpDomain(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Industry *</label>
+                        <input className="input text-sm" placeholder="e.g. Fitness, Finance, Travel" value={lpIndustry}
+                          onChange={e => setLpIndustry(e.target.value)} />
+                      </div>
+                    </div>
+                    {blogLP ? (
+                      <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-lg p-2">
+                        <img src={blogLP.imageUrl} alt="" className="w-16 h-12 object-cover rounded" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{blogLP.title}</p>
+                          <p className="text-xs text-slate-400 truncate">{blogLP.subtitle}</p>
+                        </div>
+                        <button type="button" onClick={generateLanding} disabled={lpLoading}
+                          className="text-xs text-emerald-500 hover:text-emerald-600 whitespace-nowrap">
+                          <i className="fa-solid fa-rotate mr-1" />Regenerate
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={generateLanding} disabled={lpLoading || !lpDomain.trim() || !lpIndustry.trim()}
+                        className="btn-secondary text-xs">
+                        {lpLoading
+                          ? <><i className="fa-solid fa-spinner fa-spin mr-1.5" />Generating landing page...</>
+                          : <><i className="fa-solid fa-wand-magic-sparkles mr-1.5" />Generate blog landing page</>}
+                      </button>
+                    )}
+                    {lpError && <p className="text-red-500 text-xs mt-2">{lpError}</p>}
+                    {blogLP && (
+                      <div className="mt-2">
+                        {lpImage ? (
+                          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-2">
+                            <img src={lpImage} alt="" className="w-16 h-12 object-cover rounded" />
+                            <span className="text-xs text-slate-600 flex-1">Your blog image</span>
+                            <button type="button" onClick={() => setLpImage("")} className="text-xs text-red-400 hover:text-red-500">Remove</button>
+                          </div>
+                        ) : (
+                          <label className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 cursor-pointer">
+                            <i className="fa-solid fa-image" />Upload your own blog image
+                            <input type="file" accept="image/*" className="hidden" onChange={e => handleLpImage(e.target.files?.[0])} />
+                          </label>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button className="btn-primary px-6 font-semibold text-white"
+                disabled={!domain.trim() || lpLoading || (desktopLP && (!lpDomain.trim() || !lpIndustry.trim() || !blogLP))}
+                onClick={() => setStep(1)}>
                 Continue <i className="fa-solid fa-arrow-right ml-2" />
               </button>
             </div>
@@ -332,6 +478,103 @@ export default function PopupModule() {
                 </div>
               </div>
 
+
+
+              {/* BG Scroll: website-style background behind the fixed widget */}
+              <div className="border border-slate-100 rounded-lg p-3 bg-white">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={!!form.scrollBgEnabled}
+                    onChange={e => setForm({ ...form, scrollBgEnabled: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500" />
+                  <span className="text-xs font-semibold text-slate-700">
+                    <i className="fa-solid fa-scroll mr-1.5 text-emerald-500" />BG Scroll
+                  </span>
+                </label>
+
+                {form.scrollBgEnabled && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex gap-2">
+                      <button type="button"
+                        className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${form.scrollBgType === "color" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                        onClick={() => setForm({ ...form, scrollBgType: "color" })}>
+                        <i className="fa-solid fa-fill-drip mr-1" />Color
+                      </button>
+                      <button type="button"
+                        className={`flex-1 text-xs font-semibold py-1.5 rounded-md border ${form.scrollBgType === "image" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-200"}`}
+                        onClick={() => setForm({ ...form, scrollBgType: "image" })}>
+                        <i className="fa-solid fa-image mr-1" />Image
+                      </button>
+                    </div>
+
+                    {form.scrollBgType === "color" ? (
+                      <div className="flex items-center gap-2">
+                        <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form.scrollBgColor) ? form.scrollBgColor : "#f8fafc"}
+                          onChange={e => setForm({ ...form, scrollBgColor: e.target.value })}
+                          className="w-10 h-9 rounded border border-slate-200 cursor-pointer" />
+                        <input className="input text-sm flex-1" placeholder="#f8fafc" value={form.scrollBgColor || ""}
+                          onChange={e => setForm({ ...form, scrollBgColor: e.target.value })} />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {(!desktopLP ? [
+                          { key: "desktop", label: "Desktop BG Images", images: form.scrollBgDesktopImages || ["", "", ""] },
+                          { key: "phone", label: "Phone BG Images", images: form.scrollBgPhoneImages || ["", "", ""] }
+                        ] : [
+                          { key: "phone", label: "Phone BG Images", images: form.scrollBgPhoneImages || ["", "", ""] }
+                        ]).map(group => (
+                          <div key={group.key}>
+                            <p className="text-xs font-medium text-slate-600 mb-1.5">{group.label}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              {[0, 1, 2].map(i => (
+                                <div key={i} className="border border-slate-200 rounded-lg p-2 bg-slate-50">
+                                  {group.images?.[i] ? (
+                                    <div className="relative">
+                                      <img src={group.images[i]} alt={`${group.label} ${i + 1}`} className="w-full h-20 object-cover rounded-md" />
+                                      <button type="button"
+                                        onClick={() => {
+                                          const key = group.key === "desktop" ? "scrollBgDesktopImages" : "scrollBgPhoneImages";
+                                          const images = [...(form[key] || ["", "", ""])];
+                                          images[i] = "";
+                                          setForm({ ...form, [key]: images });
+                                        }}
+                                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-800 text-white text-xs flex items-center justify-center hover:bg-slate-900">
+                                        x
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <label className="h-20 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-200 rounded-md cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30">
+                                      <i className="fa-solid fa-upload text-slate-400" />
+                                      <span className="text-[11px] text-slate-500">Image {i + 1}</span>
+                                      <input type="file" accept="image/*" className="hidden"
+                                        onChange={e => { handleScrollBgImage(e.target.files?.[0], i, group.key); e.target.value = ""; }} />
+                                    </label>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Blury: {form.scrollBgBlur || 0}px</label>
+                        <input type="range" min="0" max="18" step="1" value={form.scrollBgBlur || 0}
+                          onChange={e => setForm({ ...form, scrollBgBlur: parseInt(e.target.value, 10) || 0 })}
+                          className="w-full" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Opacity: {form.scrollBgOpacity ?? 0.25}</label>
+                        <input type="range" min="0" max="0.8" step="0.05" value={form.scrollBgOpacity ?? 0.25}
+                          onChange={e => setForm({ ...form, scrollBgOpacity: parseFloat(e.target.value) })}
+                          className="w-full" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Border Radius (px)</label>
@@ -503,7 +746,7 @@ export default function PopupModule() {
             <h2 className="font-semibold text-slate-800 mb-3 text-sm">
               <i className="fa-solid fa-eye mr-2 text-emerald-500" />Live Preview
             </h2>
-            <DevicePreviewFrame html={outputHtml} height={480} title="preview" />
+            <DevicePreviewFrame html={popupHtml} height={480} title="preview" />
           </div>
         </div>
       )}
@@ -516,6 +759,18 @@ export default function PopupModule() {
               <i className="fa-solid fa-eye mr-2 text-emerald-500" />Final Preview
             </h2>
             <div className="flex gap-3 items-center">
+              {lpActive && (
+                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                  <button onClick={() => setPreviewMode("desktop")} title="Desktop view"
+                    className={`px-2.5 py-1 rounded-md text-sm ${previewMode === "desktop" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"}`}>
+                    <i className="fa-solid fa-desktop" />
+                  </button>
+                  <button onClick={() => setPreviewMode("mobile")} title="Phone view"
+                    className={`px-2.5 py-1 rounded-md text-sm ${previewMode === "mobile" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"}`}>
+                    <i className="fa-solid fa-mobile-screen-button" />
+                  </button>
+                </div>
+              )}
               <button onClick={() => setStep(2)} className="btn-secondary text-sm">
                 <i className="fa-solid fa-arrow-left mr-1" />Edit
               </button>
@@ -530,9 +785,17 @@ export default function PopupModule() {
             </div>
           </div>
           {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
-          <div className="card">
-            <DevicePreviewFrame html={outputHtml} height={520} title="Final preview" />
-          </div>
+          {lpActive && previewMode === "mobile" ? (
+            <div className="flex justify-center bg-slate-100 rounded-xl py-6" style={{ minHeight: 600 }}>
+              <div className="bg-black rounded-[2rem] p-2 shadow-xl" style={{ width: 390 }}>
+                <iframe srcDoc={previewHtml} title="Final preview (phone)" className="w-full bg-white rounded-[1.5rem]" style={{ height: 720 }} sandbox="allow-scripts" />
+              </div>
+            </div>
+          ) : (
+            <div className="card">
+              <DevicePreviewFrame html={previewHtml} height={520} title="Final preview" />
+            </div>
+          )}
         </div>
       )}
     </div>
