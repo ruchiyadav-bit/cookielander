@@ -1890,7 +1890,8 @@ export const POPUP_FIELD_DEFAULTS = {
   // the label printed on the foil, and the foil's base gold color.
   revealHeading: "You won 20% OFF 🎉",
   scratchLabel: "SCRATCH HERE",
-  scratchColor: "#d6b866"
+  scratchColor: "#d6b866",
+  confettiEnabled: true
 };
 
 // Lighten (+pct) or darken (−pct) a #rrggbb color — used to build the
@@ -2165,15 +2166,21 @@ ${popupScript(f)}
       const f = { ...POPUP_FIELD_DEFAULTS, ...p };
       const { heading, bodyCopy, imageUrl, revealHeading, scratchLabel, scratchColor,
               primaryText, primaryColor, primaryTextColor, bgColor, borderRadius, padding,
-              domain, boxWidth, boxHeight } = f;
+              domain, boxWidth, boxHeight, confettiEnabled } = f;
       const goldLight = shadeHex(scratchColor, 0.35), goldDark = shadeHex(scratchColor, -0.25);
+      // Reveal animations — heading fades up, button pops in with a springy
+      // overshoot once the foil clears.
+      const scratchCSS = `<style>
+@keyframes scratchFadeUp{0%{transform:translateY(12px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes scratchPop{0%{transform:scale(.35);opacity:0}65%{transform:scale(1.16);opacity:1}100%{transform:scale(1);opacity:1}}
+</style>`;
       const modal = `  <div id="popup-modal" style="position:relative;max-width:${boxWidth || 480}px;width:100%;${boxHeight ? `min-height:${boxHeight}px;` : ""}background:${bgColor};border-radius:${borderRadius}px;padding:${padding}px 28px;text-align:center;box-shadow:0 30px 80px rgba(15,23,42,.35)">
     <button onclick="popupClose()" style="position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:50%;background:rgba(15,23,42,.08);border:none;cursor:pointer;font-size:11px;z-index:2">✕</button>
     ${imageUrl ? `<img src="${imageUrl}" alt="" style="height:44px;object-fit:contain;display:block;margin:0 auto 18px"/>` : ""}
     <h1 class="popup-heading" style="font-family:'Poppins',sans-serif;font-size:30px;font-weight:800;color:#1e293b;margin-bottom:8px;letter-spacing:-.01em">${heading}</h1>
     <p class="popup-body" style="font-size:14.5px;color:#64748b;line-height:1.6;margin-bottom:24px">${bodyCopy}</p>
     <div id="scratch-wrap" style="position:relative;width:100%;max-width:340px;height:215px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 14px 34px rgba(15,23,42,.18);user-select:none">
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:22px;background:linear-gradient(160deg,#ffffff,#f4f0e6)">
+      <div id="scratch-reveal" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:22px;background:linear-gradient(160deg,#ffffff,#f4f0e6)">
         <h2 class="popup-reveal" style="font-family:'Poppins',sans-serif;font-size:22px;font-weight:800;color:#1e293b;line-height:1.3">${revealHeading}</h2>
         <button class="btn-primary" onclick="popupPrimary()" style="font-family:'Roboto',sans-serif;letter-spacing:.02em;transition:filter .18s,transform .18s;padding:13px 30px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;background:${primaryColor};color:${primaryTextColor};box-shadow:0 10px 24px -8px rgba(15,23,42,.5)" onmouseover="this.style.filter='brightness(1.15)';this.style.transform='translateY(-1px)'" onmouseout="this.style.filter='';this.style.transform=''">${primaryText}</button>
       </div>
@@ -2205,24 +2212,56 @@ ${popupScript(f)}
     ctx.globalCompositeOperation='source-over';
   }
   function pos(e){var r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  function confetti(){
+    var c=document.createElement('canvas');
+    c.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647';
+    document.body.appendChild(c);
+    var x=c.getContext('2d');c.width=window.innerWidth;c.height=window.innerHeight;
+    var r=canvas.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+    var cols=['#f59e0b','#10b981','#3b82f6','#ef4444','#eab308','#a855f7','#ec4899','#ffffff'];
+    var ps=[];
+    for(var i=0;i<150;i++){
+      var a=Math.random()*Math.PI*2,v=6+Math.random()*10;
+      ps.push({x:cx,y:cy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-8,w:5+Math.random()*7,h:4+Math.random()*4,
+        r:Math.random()*Math.PI,vr:(Math.random()-.5)*.35,c:cols[i%cols.length],l:80+Math.random()*50});
+    }
+    (function tick(){
+      x.clearRect(0,0,c.width,c.height);var alive=false;
+      for(var i=0;i<ps.length;i++){var p=ps[i];if(p.l<=0)continue;alive=true;
+        p.vy+=.32;p.vx*=.985;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;p.l--;
+        x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=Math.min(1,p.l/30);
+        x.fillStyle=p.c;x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore();
+      }
+      if(alive)requestAnimationFrame(tick);else c.remove();
+    })();
+  }
+  function reveal(){
+    if(revealed)return;revealed=true;
+    canvas.style.transition='opacity .45s';canvas.style.pointerEvents='none';canvas.style.opacity='0';
+    setTimeout(function(){canvas.remove();},500);
+    var rv=document.getElementById('scratch-reveal');
+    if(rv){
+      var h=rv.querySelector('.popup-reveal'),b=rv.querySelector('.btn-primary');
+      if(h)h.style.animation='scratchFadeUp .5s .1s both';
+      if(b)b.style.animation='scratchPop .6s .3s cubic-bezier(.34,1.56,.64,1) both';
+    }
+    ${confettiEnabled ? "confetti();" : ""}
+  }
+  var moves=0;
   function check(){
     if(revealed||!canvas.width)return;
     var d=ctx.getImageData(0,0,canvas.width,canvas.height).data,clear=0,samples=0;
     for(var i=3;i<d.length;i+=32){samples++;if(d[i]===0)clear++;}
-    if(clear/samples>0.45){
-      revealed=true;
-      canvas.style.transition='opacity .6s';canvas.style.opacity='0';
-      setTimeout(function(){canvas.remove();},650);
-    }
+    if(clear/samples>0.16)reveal();
   }
   canvas.addEventListener('pointerdown',function(e){down=true;started=true;var p=pos(e);scratch(p.x,p.y);e.preventDefault();});
-  canvas.addEventListener('pointermove',function(e){if(!down)return;var p=pos(e);scratch(p.x,p.y);e.preventDefault();});
+  canvas.addEventListener('pointermove',function(e){if(!down)return;var p=pos(e);scratch(p.x,p.y);if(++moves%6===0)check();e.preventDefault();});
   window.addEventListener('pointerup',function(){if(!down)return;down=false;check();});
   paint();
   window.addEventListener('resize',function(){if(!started&&!revealed)paint();});
 })();
 </${"script"}>`;
-      return `<!DOCTYPE html><html lang="en"><head>${popupHead(heading, domain)}</head><body>
+      return `<!DOCTYPE html><html lang="en"><head>${popupHead(heading, domain)}${scratchCSS}</head><body>
 <div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Your website content here</div>
 ${popupOverlay(f, modal)}
 ${popupScript(f)}

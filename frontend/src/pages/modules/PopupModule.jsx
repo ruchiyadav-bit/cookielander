@@ -626,6 +626,14 @@ export default function PopupModule() {
                         </div>
                       </div>
                     </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={!!form.confettiEnabled}
+                        onChange={e => setForm({ ...form, confettiEnabled: e.target.checked })}
+                        className="w-4 h-4 accent-amber-500" />
+                      <span className="text-xs font-semibold text-slate-700">
+                        🎉 Celebration confetti burst on reveal
+                      </span>
+                    </label>
                     <p className="text-xs text-slate-400">Image URL above (optional) shows as a logo on top of the card. The reveal button uses the Primary Button text/color/URL.</p>
                   </div>
                 </div>
