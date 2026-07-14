@@ -1927,7 +1927,24 @@ function popupOverlayBackground(p) {
 }
 
 function popupOverlay(p, modalInner) {
-  const { overlayBlur = 4 } = p;
+  const { overlayBlur = 4, overlayBgType = "color", overlayBgImage = "", overlayBgColor = "#0f172a", overlayOpacity = 0.6 } = p;
+  // Image backdrop: `backdrop-filter` on the overlay only blurs what's BEHIND
+  // the overlay (the page), never the overlay's own background image — so the
+  // image stayed sharp no matter the Blur slider. Render the image on its own
+  // layer and blur THAT layer directly with filter:blur(); the color tint sits
+  // on a second layer above it, and the modal on top. inset is expanded by 2×
+  // the blur radius so the blurred image's soft edges never expose gaps.
+  if (overlayBgType === "image" && overlayBgImage) {
+    const tint = hexToRgba(overlayBgColor, overlayOpacity);
+    const inset = overlayBlur ? `-${overlayBlur * 2}px` : "0";
+    return `<div id="popup-overlay" style="position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999">
+<div id="popup-overlay-img" style="position:absolute;inset:${inset};background:url('${overlayBgImage}') center/cover no-repeat;filter:blur(${overlayBlur}px);pointer-events:none"></div>
+<div id="popup-overlay-tint" style="position:absolute;inset:0;background:${tint};pointer-events:none"></div>
+<div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:100%">
+${modalInner}
+</div>
+</div>`;
+  }
   const bg = popupOverlayBackground(p);
   return `<div id="popup-overlay" style="position:fixed;inset:0;width:100vw;height:100vh;background:${bg};backdrop-filter:blur(${overlayBlur}px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999">
 ${modalInner}
