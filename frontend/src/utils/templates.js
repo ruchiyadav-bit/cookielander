@@ -1884,8 +1884,27 @@ export const POPUP_FIELD_DEFAULTS = {
   buttonWidth: "", buttonPaddingX: "", buttonPaddingY: "",
   btnRadius: "", boxShadow: "",
   contentAlign: "",   // "" (template default) | "left" | "center" | "right"
-  buttonLayout: ""    // "" (template default) | "row" | "column"
+  buttonLayout: "",   // "" (template default) | "row" | "column"
+
+  // Scratch Card template only — the hidden reward revealed under the foil,
+  // the label printed on the foil, and the foil's base gold color.
+  revealHeading: "You won 20% OFF 🎉",
+  scratchLabel: "SCRATCH HERE",
+  scratchColor: "#d6b866"
 };
+
+// Lighten (+pct) or darken (−pct) a #rrggbb color — used to build the
+// scratch-foil gradient from a single user-picked base color.
+function shadeHex(hex, pct) {
+  const h = (hex || "").replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return hex || "#d6b866";
+  const f = (i) => {
+    const v = parseInt(h.substring(i, i + 2), 16);
+    const n = Math.round(pct > 0 ? v + (255 - v) * pct : v * (1 + pct));
+    return Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(2)}${f(4)}`;
+}
 
 // #rrggbb -> rgba(r,g,b,alpha); falls back to a safe dark scrim on bad input.
 function hexToRgba(hex, alpha = 1) {
@@ -2113,6 +2132,101 @@ ${popupScript(f)}
 <div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Your website content here</div>
 ${popupOverlay(f, modal)}
 ${popupScript(f)}
+</body></html>`;
+    }
+  },
+  {
+    id: "scratch-card",
+    name: "Scratch Card",
+    description: "Gold scratch-to-reveal card — visitor scratches the foil to uncover a reward heading and button",
+    icon: "fa-solid fa-gift",
+    preview: { bg: "#fdf3e7", accent: "#d6b866" },
+    // Matches the reference: cream page, logo on top, "Try your luck" heading,
+    // sub-line, and a gold SCRATCH HERE card in the middle.
+    defaults: {
+      imageUrl: "",
+      heading: "Try your luck",
+      bodyCopy: "Scratch below to see what you win",
+      revealHeading: "You won 20% OFF 🎉",
+      scratchLabel: "SCRATCH HERE",
+      scratchColor: "#d6b866",
+      primaryText: "Claim My Reward",
+      secondaryText: "",
+      primaryColor: "#0f172a",
+      primaryTextColor: "#ffffff",
+      bgColor: "#fdf6ec",
+      overlayBgColor: "#fdf3e7",
+      overlayOpacity: 1,
+      overlayBlur: 0,
+      borderRadius: 24,
+      padding: 40
+    },
+    generate: (p) => {
+      const f = { ...POPUP_FIELD_DEFAULTS, ...p };
+      const { heading, bodyCopy, imageUrl, revealHeading, scratchLabel, scratchColor,
+              primaryText, primaryColor, primaryTextColor, bgColor, borderRadius, padding,
+              domain, boxWidth, boxHeight } = f;
+      const goldLight = shadeHex(scratchColor, 0.35), goldDark = shadeHex(scratchColor, -0.25);
+      const modal = `  <div id="popup-modal" style="position:relative;max-width:${boxWidth || 480}px;width:100%;${boxHeight ? `min-height:${boxHeight}px;` : ""}background:${bgColor};border-radius:${borderRadius}px;padding:${padding}px 28px;text-align:center;box-shadow:0 30px 80px rgba(15,23,42,.35)">
+    <button onclick="popupClose()" style="position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:50%;background:rgba(15,23,42,.08);border:none;cursor:pointer;font-size:11px;z-index:2">✕</button>
+    ${imageUrl ? `<img src="${imageUrl}" alt="" style="height:44px;object-fit:contain;display:block;margin:0 auto 18px"/>` : ""}
+    <h1 class="popup-heading" style="font-family:'Poppins',sans-serif;font-size:30px;font-weight:800;color:#1e293b;margin-bottom:8px;letter-spacing:-.01em">${heading}</h1>
+    <p class="popup-body" style="font-size:14.5px;color:#64748b;line-height:1.6;margin-bottom:24px">${bodyCopy}</p>
+    <div id="scratch-wrap" style="position:relative;width:100%;max-width:340px;height:215px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 14px 34px rgba(15,23,42,.18);user-select:none">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:22px;background:linear-gradient(160deg,#ffffff,#f4f0e6)">
+        <h2 class="popup-reveal" style="font-family:'Poppins',sans-serif;font-size:22px;font-weight:800;color:#1e293b;line-height:1.3">${revealHeading}</h2>
+        <button class="btn-primary" onclick="popupPrimary()" style="font-family:'Roboto',sans-serif;letter-spacing:.02em;transition:filter .18s,transform .18s;padding:13px 30px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;background:${primaryColor};color:${primaryTextColor};box-shadow:0 10px 24px -8px rgba(15,23,42,.5)" onmouseover="this.style.filter='brightness(1.15)';this.style.transform='translateY(-1px)'" onmouseout="this.style.filter='';this.style.transform=''">${primaryText}</button>
+      </div>
+      <canvas id="scratch-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
+    </div>
+  </div>`;
+      const scratchScript = `<script>
+(function(){
+  var canvas=document.getElementById('scratch-canvas');
+  if(!canvas)return;
+  var ctx=canvas.getContext('2d');
+  var started=false,revealed=false,down=false;
+  function paint(){
+    var r=canvas.getBoundingClientRect();
+    canvas.width=r.width;canvas.height=r.height;
+    var g=ctx.createLinearGradient(0,0,r.width,r.height);
+    g.addColorStop(0,'${goldLight}');g.addColorStop(.5,'${scratchColor}');g.addColorStop(1,'${goldDark}');
+    ctx.fillStyle=g;ctx.fillRect(0,0,r.width,r.height);
+    ctx.save();ctx.globalAlpha=.14;ctx.strokeStyle='#ffffff';ctx.lineWidth=14;
+    for(var i=-2;i<8;i++){ctx.beginPath();ctx.moveTo(i*60,r.height+30);ctx.lineTo(i*60+70,-30);ctx.stroke();}
+    ctx.restore();
+    ctx.font='700 24px Poppins,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle='rgba(255,255,255,.8)';
+    ctx.fillText(${JSON.stringify(scratchLabel)},r.width/2,r.height/2);
+  }
+  function scratch(x,y){
+    ctx.globalCompositeOperation='destination-out';
+    ctx.beginPath();ctx.arc(x,y,26,0,Math.PI*2);ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  function pos(e){var r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  function check(){
+    if(revealed||!canvas.width)return;
+    var d=ctx.getImageData(0,0,canvas.width,canvas.height).data,clear=0,samples=0;
+    for(var i=3;i<d.length;i+=32){samples++;if(d[i]===0)clear++;}
+    if(clear/samples>0.45){
+      revealed=true;
+      canvas.style.transition='opacity .6s';canvas.style.opacity='0';
+      setTimeout(function(){canvas.remove();},650);
+    }
+  }
+  canvas.addEventListener('pointerdown',function(e){down=true;started=true;var p=pos(e);scratch(p.x,p.y);e.preventDefault();});
+  canvas.addEventListener('pointermove',function(e){if(!down)return;var p=pos(e);scratch(p.x,p.y);e.preventDefault();});
+  window.addEventListener('pointerup',function(){if(!down)return;down=false;check();});
+  paint();
+  window.addEventListener('resize',function(){if(!started&&!revealed)paint();});
+})();
+</${"script"}>`;
+      return `<!DOCTYPE html><html lang="en"><head>${popupHead(heading, domain)}</head><body>
+<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Your website content here</div>
+${popupOverlay(f, modal)}
+${popupScript(f)}
+${scratchScript}
 </body></html>`;
     }
   }

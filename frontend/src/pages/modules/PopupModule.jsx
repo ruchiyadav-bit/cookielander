@@ -598,6 +598,39 @@ export default function PopupModule() {
                 </div>
               </div>
 
+              {templateId === "scratch-card" && (
+                <div className="border border-slate-100 rounded-lg p-3 bg-amber-50/50">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">
+                    <i className="fa-solid fa-gift mr-1.5 text-amber-500" />Scratch Card
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Reveal Heading (hidden under the foil)</label>
+                      <input className="input text-sm" value={form.revealHeading}
+                        onChange={e => setForm({ ...form, revealHeading: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Scratch Label</label>
+                        <input className="input text-sm" value={form.scratchLabel}
+                          onChange={e => setForm({ ...form, scratchLabel: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Foil Color</label>
+                        <div className="flex items-center gap-2">
+                          <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form.scratchColor) ? form.scratchColor : "#d6b866"}
+                            onChange={e => setForm({ ...form, scratchColor: e.target.value })}
+                            className="w-8 h-8 rounded border border-slate-200 cursor-pointer" />
+                          <input className="input text-xs flex-1" value={form.scratchColor}
+                            onChange={e => setForm({ ...form, scratchColor: e.target.value })} />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400">Image URL above (optional) shows as a logo on top of the card. The reveal button uses the Primary Button text/color/URL.</p>
+                  </div>
+                </div>
+              )}
+
               {templateId === "split-confirm" && (
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Image Panel Color</label>
